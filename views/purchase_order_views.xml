@@ -7,7 +7,7 @@
             <xpath expr="//field[@name='order_line']/form//field[@name='product_id']" position="after">
                 <field name="pedimento_number"/>
             </xpath>
-            <xpath expr="//field[@name='order_line']/tree//field[@name='product_id']" position="after">
+            <xpath expr="//field[@name='order_line']/list//field[@name='product_id']" position="after">
                 <field name="pedimento_number"/>
             </xpath>
         </field>
