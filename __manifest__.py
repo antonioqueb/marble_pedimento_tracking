@@ -9,7 +9,6 @@
     'maintainer': 'ANTONIO QUEB',
     'depends': ['purchase', 'stock'],
     'data': [
-        'views/purchase_order_views.xml',
         'views/stock_picking_views.xml',
         'views/stock_quant_views.xml',
     ],
