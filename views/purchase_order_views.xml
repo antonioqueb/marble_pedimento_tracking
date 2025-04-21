@@ -1,0 +1,15 @@
+<odoo>
+    <record id="purchase_order_form_pedimento" model="ir.ui.view">
+        <field name="name">purchase.order.form.pedimento</field>
+        <field name="model">purchase.order</field>
+        <field name="inherit_id" ref="purchase.purchase_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='order_line']/form//field[@name='product_id']" position="after">
+                <field name="pedimento_number"/>
+            </xpath>
+            <xpath expr="//field[@name='order_line']/tree//field[@name='product_id']" position="after">
+                <field name="pedimento_number"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>
