@@ -1,66 +1,71 @@
 # models/stock_move_line.py
 from odoo import models, fields, api
 import re, logging
-
 _logger = logging.getLogger(__name__)
 
-def _clean(v):          # deja solo dígitos
-    return re.sub(r'\D', '', v or '')
+# ───────────────── helpers ─────────────────
+_CLEAN  = lambda v: re.sub(r'\D', '', v or '')
+_PRETTY = lambda d: f"{d[:2]} {d[2:4]} {d[4:8]} {d[8:]}"   # AA BB CCCC DDDDDDD
 
-def _pretty(v):         # AA BB CCCC DDDDDDD  (con espacios)
-    d = _clean(v)
-    return f"{d[:2]} {d[2:4]} {d[4:8]} {d[8:]}" if len(d) == 15 else v
-
-_PED_RE = re.compile(r'^\d{15}$')         # sólo 15 dígitos crudos
-
+_PED_RE = re.compile(r'^\d{15}$')       # exactamente 15 dígitos
 
 class StockMoveLine(models.Model):
     _inherit = 'stock.move.line'
 
+    # tamaño 18 (15 dígitos + 3 espacios resultantes)
     pedimento_number = fields.Char('Número de Pedimento', size=18)
 
-    # ────────── AUTO-formato al CREAR ──────────
+    # ---- UX: durante la edición ----
+    @api.onchange('pedimento_number')
+    def _onchange_ped(self):
+        """
+        • Mientras el usuario escribe: permitimos SÓLO dígitos
+        • Si llega a 15 dígitos → formateamos con espacios
+        """
+        if self.pedimento_number is None:
+            return
+        digits = _CLEAN(self.pedimento_number)[:15]   # recorta excedente
+        self.pedimento_number = _PRETTY(digits) if len(digits) == 15 else digits
+
+    # ---- validación en servidor ----
+    @api.constrains('pedimento_number')
+    def _check_ped(self):
+        for rec in self.filtered('pedimento_number'):
+            if not _PED_RE.fullmatch(_CLEAN(rec.pedimento_number)):
+                raise models.ValidationError("El pedimento debe contener 15 dígitos numéricos.")
+
+    # ---- create / write: siempre guardamos bonito ----
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:
             if vals.get('pedimento_number'):
-                vals['pedimento_number'] = _pretty(vals['pedimento_number'])
+                d = _CLEAN(vals['pedimento_number'])
+                vals['pedimento_number'] = _PRETTY(d) if len(d) == 15 else d
         return super().create(vals_list)
 
-    # ────────── AUTO-formato al EDITAR ──────────
     def write(self, vals):
         if 'pedimento_number' in vals:
-            vals['pedimento_number'] = _pretty(vals['pedimento_number'])
+            d = _CLEAN(vals['pedimento_number'])
+            vals['pedimento_number'] = _PRETTY(d) if len(d) == 15 else d
         return super().write(vals)
 
-    # ────────── Validación (ya formateada) ──────────
-    @api.constrains('pedimento_number')
-    def _check_ped(self):
-        for rec in self.filtered('pedimento_number'):
-            if not _PED_RE.fullmatch(_clean(rec.pedimento_number)):
-                raise models.ValidationError(
-                    "Un pedimento debe contener exactamente 15 dígitos numéricos."
-                )
-
-    # ────────── Copia al/los quant(s) ──────────
+    # ---- copia al/los stock.quant ----
     def _action_done(self):
         res = super()._action_done()
         Quant = self.env['stock.quant']
 
         for ml in self:
             ped = ml.pedimento_number or ml.move_id.pedimento_number
-            if not _clean(ped):
+            if not _PED_RE.fullmatch(_CLEAN(ped)):
                 continue
 
-            domain = [
-                ('product_id', '=', ml.product_id.id),
-                ('location_id', '=', ml.location_dest_id.id),
-            ]
+            domain = [('product_id', '=', ml.product_id.id),
+                      ('location_id', '=', ml.location_dest_id.id)]
             if ml.lot_id:
                 domain.append(('lot_id', '=', ml.lot_id.id))
 
             quants = Quant.search(domain)
             if quants:
                 quants.write({'pedimento_number': ped})
-                _logger.debug("[PEDIMENTO] ML %s → '%s' copiado a %s", ml.id, ped, quants.ids)
+                _logger.debug("[PED] ML %s → '%s' copiado a %s", ml.id, ped, quants.ids)
         return res

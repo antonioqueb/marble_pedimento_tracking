@@ -3,41 +3,42 @@ from odoo import models, fields, api
 import re, logging
 _logger = logging.getLogger(__name__)
 
-def _clean(v):  return re.sub(r'\D', '', v or '')
-def _pretty(v): return f"{_clean(v)[:2]} {_clean(v)[2:4]} {_clean(v)[4:8]} {_clean(v)[8:]}" if len(_clean(v)) == 15 else v
-
+_CLEAN  = lambda v: re.sub(r'\D', '', v or '')
+_PRETTY = lambda d: f"{d[:2]} {d[2:4]} {d[4:8]} {d[8:]}" if len(d) == 15 else d
 
 class StockMove(models.Model):
     _inherit = 'stock.move'
 
     pedimento_number = fields.Char('Número de Pedimento', size=18)
 
-    # ---------- formato inmediato en vista ----------
+    # ---- UX en formulario ----
     @api.onchange('pedimento_number')
     def _onchange_ped(self):
-        if self.pedimento_number:
-            self.pedimento_number = _pretty(self.pedimento_number)
+        if self.pedimento_number is None:
+            return
+        digits = _CLEAN(self.pedimento_number)[:15]
+        self.pedimento_number = _PRETTY(digits) if len(digits) == 15 else digits
 
-    # ---------- se propaga al crear líneas ----------
+    # ---- propaga a líneas nuevas ----
     def _prepare_move_line_vals(self, *a, **kw):
         vals = super()._prepare_move_line_vals(*a, **kw)
-        vals['pedimento_number'] = _pretty(self.pedimento_number)
+        vals['pedimento_number'] = self.pedimento_number
         return vals
 
     def _create_move_lines(self):
         res = super()._create_move_lines()
         for move in self:
-            ped = _pretty(move.pedimento_number)
             for line in move.move_line_ids.filtered(lambda l: not l.pedimento_number):
-                line.pedimento_number = ped
+                line.pedimento_number = move.pedimento_number
         return res
 
-    # ---------- AUTO-formato y propagación ----------
+    # ---- guarda con formato y propaga a líneas existentes ----
     def write(self, vals):
         if 'pedimento_number' in vals:
-            vals['pedimento_number'] = _pretty(vals['pedimento_number'])
+            d = _CLEAN(vals['pedimento_number'])
+            vals['pedimento_number'] = _PRETTY(d) if len(d) == 15 else d
         res = super().write(vals)
         if 'pedimento_number' in vals:
             for move in self:
-                move.move_line_ids.write({'pedimento_number': vals['pedimento_number']})
+                move.move_line_ids.write({'pedimento_number': move.pedimento_number})
         return res
